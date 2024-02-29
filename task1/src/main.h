@@ -4,10 +4,15 @@
 #include <stdint.h>
 #include <stdlib.h>
 
+#ifndef min
+#define min(a, b) (((a) < (b)) ? (a) : (b))
+#endif
 
-#define u_ij(u, i, j, f, h)                                                    \
-  = 0.25 *                                                                     \
-    (u[i - 1][j] + u[i + 1][j] + u[i][j - 1] + u[i][j + 1] - h * h * f[i][j])
+#define u_ij(i, j, pb)                                                         \
+  0.25 * (pb->u[i - 1][j] + pb->u[i + 1][j] + pb->u[i][j - 1] +                \
+          pb->u[i][j + 1] - pb->h * pb->h * pb->f[i][j])
+
+enum signals { SUCCESS, CALCULATION_ERR };
 
 typedef double (*func)(double x, double y);
 
@@ -18,7 +23,7 @@ typedef struct point {
 
 typedef struct problem_params {
   /** Point number */
-  size_t N;
+  size_t size;
 
   /** Size of the grid  */
   double grid_size;
@@ -29,20 +34,20 @@ typedef struct problem_params {
   /** h := grid_size/(N + 1) */
   double h;
 
-  /** Edge points */
-  point l_down;
-  point r_up;
+  /** Edge point */
+  point shift;
 
   /** u-function matrix */
   double **u;
 
-  /** Init function */
-  func f;
+  /** function */
+  double **f;
+
 } pb_parms;
 
 pb_parms *approximate_values(uint32_t N, double grid_size, double eps,
-                             point l_down, point r_up, func f);
+                             point l_down, func f, func d2f);
 
-void free_results(pb_parms*);
+void free_results(pb_parms *);
 
 #endif
