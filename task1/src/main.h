@@ -12,7 +12,7 @@
   0.25 * (pb->u[i - 1][j] + pb->u[i + 1][j] + pb->u[i][j - 1] +                \
           pb->u[i][j + 1] - pb->h * pb->h * pb->f[i][j])
 
-enum signals { SUCCESS, CALCULATION_ERR };
+enum signals { SUCCESS, MEM_ERR };
 
 typedef double (*func)(double x, double y);
 
@@ -23,7 +23,7 @@ typedef struct point {
 
 typedef struct problem_params {
   /** Point number */
-  size_t size;
+  int64_t size;
 
   /** Size of the grid  */
   double grid_size;
@@ -45,7 +45,7 @@ typedef struct problem_params {
 
 } pb_parms;
 
-pb_parms *approximate_values(uint32_t N, double grid_size, double eps,
+pb_parms *approximate_values(int64_t N, double grid_size, double eps,
                              point l_down, func f, func d2f);
 
 void free_results(pb_parms *);
