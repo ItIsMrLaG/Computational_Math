@@ -9,4 +9,11 @@ install_manifest.txt
 compile_commands.json
 CTestTestfile.cmake
 _deps
+
+# JetBrains IDE
 build
+.idea
+cmake-build-debug
+
+# VS code
+.vscode

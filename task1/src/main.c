@@ -2,20 +2,40 @@
 #include <omp.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 #include "main.h"
 
 #define BLOCK_SIZE 64
 
-#define x_ij(i, j, pb) (i * pb->h + pb->shift.x)
-#define y_ij(i, j, pb) (i * pb->h + pb->shift.y)
+#define x_i(i, pb) (pb->h * i)
+#define y_j(j, pb) (pb->h * j)
+#define u_ij(i, j, pb)                                                         \
+  (0.25 * (pb->u[i - 1][j] + pb->u[i + 1][j] + pb->u[i][j - 1] +               \
+           pb->u[i][j + 1] - pb->h * pb->h * pb->f[i][j]))
 
-#define b_k0(bk, bl_size) (bk * bl_size + 1)
-#define b_kn(k0, bl_size, pb) min(k0 + bl_size, pb->size - 1)
+#define CEIL_DIV_UP(x, y) ((x + y - 1) / y)
+#define MIN(a, b) (((a) < (b)) ? (a) : (b))
 
-// #define DEBUG
+typedef double (*func_R2)(double, double);
 
-static double **my_alloc_u(int64_t N) {
+typedef struct problem {
+  double **u;
+  double **f;
+  double h;
+
+  double eps;
+  int64_t size;
+  int64_t iters;
+} problem;
+
+void free_matrix(double **u, int64_t N) {
+  for (int64_t i = 0; i < N; i++)
+    free(u[i]);
+  free(u);
+}
+
+double **alloc_matrix(int64_t N) {
   double **u = calloc(N, sizeof(double *));
 
   if (u == NULL)
@@ -23,200 +43,159 @@ static double **my_alloc_u(int64_t N) {
 
   for (int64_t i = 0; i < N; i++) {
     u[i] = calloc(N, sizeof(double));
-
     if (u[i] == NULL) {
-
-      for (int64_t j = 0; j < i; j++)
-        free(u[i]);
-
-      free(u);
+      free_matrix(u, i);
       return NULL;
     }
   }
   return u;
 }
 
-static inline void my_free_u(int64_t N, double **u) {
-  for (int64_t i = 0; i < N; i++)
-    free(u[i]);
-  free(u);
-}
-
-static inline void init_matrix(pb_parms *pb, func f, func u) {
-
-  int64_t i, j;
-
-  for (i = 0; i < pb->size; i++) {
-    for (j = 0; j < pb->size; j++) {
-      if ((i == 0) || (j == 0) || (i == pb->size) || (j == pb->size)) {
-        pb->u[i][j] = u(x_ij(i, j, pb), y_ij(i, j, pb));
-      } else {
+void init_matrixes(func_R2 f, func_R2 u, problem *pb) {
+  for (int64_t i = 0; i < pb->size; i++) {
+    for (int64_t j = 0; j < pb->size; j++) {
+      if ((i == 0) || (j == 0) || (i == pb->size - 1) || (j == pb->size - 1))
+        pb->u[i][j] = u(x_i(i, pb), y_j(j, pb));
+      else
         pb->u[i][j] = 0;
-      }
 
-      pb->f[i][j] = f(x_ij(i, j, pb), y_ij(i, j, pb));
+      pb->f[i][j] = f(x_i(i, pb), y_j(j, pb));
     }
   }
-
-#ifdef DEBUG
-  for (size_t i = 0; i <= pb->size; i++) {
-    printf("\n %lu: ", i);
-    for (size_t j = 0; j <= pb->size; j++) {
-      printf("|(%lu) %f ", j, pb->u[i][j]);
-    }
-  }
-#endif
 }
 
-static inline pb_parms *create_pb(int64_t N, double grid_size, double eps,
-                                  point l_down) {
-  pb_parms *pb = calloc(1, sizeof(pb_parms));
+int init_pb(double eps, int64_t N, problem *pb) {
 
-  if (pb == NULL)
-    return pb;
+  if (N < 2)
+    return -1;
 
-  pb->size = N + 2;
-  pb->grid_size = grid_size;
+  pb->size = N;
+
+  pb->f = alloc_matrix(pb->size);
+  if (pb->f == NULL)
+    return -1;
+
+  pb->u = alloc_matrix(pb->size);
+  if (pb->u == NULL) {
+    free_matrix(pb->f, pb->size);
+    return -1;
+  }
+
+  pb->h = 1.0 / (N - 1);
   pb->eps = eps;
-  pb->h = grid_size / pb->size;
-  pb->shift = l_down;
+  pb->iters = 0;
 
-  pb->u = my_alloc_u(pb->size);
-  pb->f = my_alloc_u(pb->size);
-
-  if (pb->u == NULL || pb->f == NULL)
-    return NULL;
-#ifdef DEBUG
-  for (size_t i = 0; i <= pb->size; i++) {
-    printf("\n %lu: ", i);
-    for (size_t j = 0; j <= pb->size; j++) {
-      printf("|(%lu) %f ", j, pb->u[i][j]);
-    }
-  }
-#endif
-  return pb;
+  return 0;
 }
 
-static double process_block(pb_parms *pb, int64_t bx, int64_t by,
-                            int64_t bl_size) {
-  int64_t i0 = b_k0(bx, bl_size);
-  int64_t in = b_kn(i0, bl_size, pb);
-  int64_t j0 = b_k0(by, bl_size);
-  int64_t jn = b_kn(j0, bl_size, pb);
-  double dm = 0;
+void free_pb(problem *pb) {
+  if (pb->u != NULL)
+    free_matrix(pb->u, pb->size);
+  if (pb->f != NULL)
+    free_matrix(pb->f, pb->size);
+  free(pb);
+}
 
-  for (int64_t i = i0; i < in; i++) {
-    for (int64_t j = j0; j < jn; j++) {
-      double temp = pb->u[i][j];
+double process_block(int64_t bi, int64_t bj, problem *pb) {
+  int64_t i_0, j_0, i_n, j_n;
 
+  i_0 = 1 + bi * BLOCK_SIZE;
+  j_0 = 1 + bj * BLOCK_SIZE;
+
+  i_n = MIN(i_0 + BLOCK_SIZE, pb->size - 1);
+  j_n = MIN(j_0 + BLOCK_SIZE, pb->size - 1);
+
+  double d, temp, dm = 0;
+
+  for (int64_t i = i_0; i < i_n; i++) {
+    for (int64_t j = j_0; j < j_n; j++) {
+      temp = pb->u[i][j];
       pb->u[i][j] = u_ij(i, j, pb);
 
-      double d = fabs(temp - pb->u[i][j]);
+      d = fabs(temp - pb->u[i][j]);
+
       if (dm < d)
         dm = d;
     }
   }
-
   return dm;
 }
 
-void free_pb(pb_parms *pb) {
-  if (pb == NULL) {
-    return;
-  }
+int process_blocks(problem *pb) {
+  int64_t N = pb->size - 2;
+  int64_t NB = CEIL_DIV_UP(N, BLOCK_SIZE);
 
-  //	TODO:
-  //  my_free_u(pb->size, pb->u);
-  //  my_free_u(pb->size, pb->f);
-  //  free(pb);
-}
-
-int64_t process_blocks(pb_parms *pb) {
-  double dmax;
-  int64_t iter = 0;
-  int64_t bl_size = BLOCK_SIZE;
-  int64_t N, NB;
-  N = pb->size - 2;
-  NB = N / BLOCK_SIZE;
-
-  if (N < BLOCK_SIZE)
-    return -MEM_ERR;
-  if (NB * BLOCK_SIZE < N)
-    NB += 1;
-
+  double dmax = 0;
   double *dm = calloc(NB, sizeof(double));
-  // double dm[3] = {0};
-
-  double **un = my_alloc_u(N);
-  if (dm == NULL || un == NULL)
-    return -MEM_ERR;
+  if (dm == NULL)
+    return -1;
 
   do {
-    int64_t bj, bi;
-    int64_t nx;
-    double res;
-    iter++;
     dmax = 0;
 
-    for (nx = 0; nx < NB; nx++) {
+    for (int64_t nx = 0; nx < NB; nx++) {
+      int64_t bi, bj;
+      double res;
       dm[nx] = 0;
 
-// #pragma omp parallel for shared(pb, nx, dm) private(bi, bj, res)
+#pragma omp parallel for shared(nx, pb, dm) private(bi, bj, res)
       for (bi = 0; bi < nx + 1; bi++) {
-
         bj = nx - bi;
 
-        res = process_block(pb, bi, bj, bl_size);
+        res = process_block(bi, bj, pb);
 
-        if (dm[bi] < res)
-          dm[bi] = res;
+        if (res > dm[nx])
+          dm[nx] = res;
       }
     }
 
-    for (nx = NB - 2; nx >= 0; nx--) {
+    for (int64_t nx = NB - 2; nx >= 0; nx--) {
+      int64_t bi, bj;
+      double res;
 
-// #pragma omp parallel for shared(pb, nx, dm) private(bi, bj, res)
-      for (bi = 0; bi < nx + 1; bi++) {
-        bj = 2 * (NB - 1) - nx - bi;
-        res = process_block(pb, bi, bj, bl_size);
-        if (dm[bi] < res)
-          dm[bi] = res;
+#pragma omp parallel for shared(nx, pb, dm) private(bi, bj, res)
+      for (bi = NB - nx - 1; bi < NB; bi++) {
+        bj = NB + ((NB - 2) - nx) - bi;
+
+        res = process_block(bi, bj, pb);
+
+        if (res > dm[nx])
+          dm[nx] = res;
       }
     }
 
-    for (int64_t k = 0; k < NB; k++) {
-      if (dmax < dm[k])
-        dmax = dm[k];
+    for (int64_t i = 0; i < NB; i++) {
+      if (dm[i] > dmax)
+        dmax = dm[i];
     }
-    printf("%f\n", dmax);
+    pb->iters++;
+
   } while (dmax > pb->eps);
   free(dm);
-  // free(um???)
 
-  return iter;
+  return 0;
 }
 
-pb_parms *approximate_values(int64_t N, double grid_size, double eps,
-                             point l_down, func f, func u) {
-  pb_parms *pb = create_pb(N, grid_size, eps, l_down);
-  int64_t iter = 0;
-
+problem *approximate(double eps, int64_t sz, func_R2 f, func_R2 u) {
+  problem *pb = calloc(1, sizeof(problem));
   if (pb == NULL)
     return NULL;
 
-  init_matrix(pb, f, u);
-  iter = process_blocks(pb);
-  if (iter < SUCCESS) {
-    free_pb(pb);
+  if (init_pb(eps, sz, pb) != 0) {
+    free(pb);
     return NULL;
   }
-  printf("res: %lu !", iter);
+
+  init_matrixes(f, u, pb);
+
+  if (process_blocks(pb) != 0) {
+    free(pb);
+    return NULL;
+  }
   return pb;
 }
 
-// double d_x3_p_y3(double x, double y) { return 6 * x + 6 * y; }
-
-// double x3_p_y3(double x, double y) { return pow(x, 3) + pow(y, 3); }
+/* =================================================== */
 
 double d_kx3_p_2ky3(double x, double y) { return 6000 * x + 12000 * y; }
 
@@ -224,17 +203,19 @@ double kx3_p_2ky3(double x, double y) {
   return 1000 * pow(x, 3) + 2000 * pow(y, 3);
 }
 
-int main(void) {
+void check(problem *pb, func_R2 u) {
+  printf("iters: %ld\n", pb->iters);
 
+  for (size_t i = 1; i < pb->size - 1; i++) {
+    for (size_t j = 1; j < pb->size - 1; j++) {
+      printf("%7.2f ", fabs(pb->u[i][j] - u(x_i(i, pb), y_j(j, pb))));
+    }
+    printf("\n");
+  }
+}
+
+void main(void) {
   omp_set_num_threads(8);
-  func f = d_kx3_p_2ky3; // d_book;q
-  func u = kx3_p_2ky3;   // book;
-  point p = {0};
-
-  // int64_t sz[] = {100, 200, 300, 500, 1000, 2000, 3000};
-  pb_parms *res = approximate_values(1000, 1, 0.1, p, f, u);
-  free_pb(res);
-  if (res)
-    printf("good");
-  return 0;
+  problem *pb = approximate(0.1, 20, d_kx3_p_2ky3, kx3_p_2ky3);
+  check(pb, kx3_p_2ky3);
 }
