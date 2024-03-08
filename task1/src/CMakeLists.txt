@@ -19,10 +19,10 @@ if(MSVC)
     )
 else()
     target_compile_options(main PRIVATE
-
-        # -Wall
-        # -Wextra
-        # -pedantic
-        # -Werror
+        -Wall
+        -Wextra
+        -pedantic
+        -Werror
+        -O3
     )
 endif()

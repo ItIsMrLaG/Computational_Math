@@ -1,0 +1,23 @@
+CMakeLists.txt.user
+CMakeCache.txt
+CMakeFiles
+CMakeScripts
+Testing
+Makefile
+cmake_install.cmake
+install_manifest.txt
+compile_commands.json
+CTestTestfile.cmake
+_deps
+
+# JetBrains IDE
+build
+.idea
+cmake-build-debug
+
+# VS code
+.vscode
+
+# Local
+experiments
+build
