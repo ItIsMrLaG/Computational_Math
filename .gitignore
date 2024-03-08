@@ -17,7 +17,9 @@ cmake-build-debug
 
 # VS code
 .vscode
+**code-workspace
 
 # Local
 experiments
 build
+**.ipynb
