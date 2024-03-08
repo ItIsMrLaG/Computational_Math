@@ -22,11 +22,15 @@ typedef double (*func_R2)(double, double);
 typedef struct problem {
   double **u;
   double **f;
-  double h;
 
+  double h;
   double eps;
   int64_t size;
   int64_t iters;
+
+  double x0;
+  double y0;
+  double l;
 } problem;
 
 void free_matrix(double **u, int64_t N) {
@@ -64,6 +68,17 @@ void init_matrixes(func_R2 f, func_R2 u, problem *pb) {
   }
 }
 
+double **alloc_copy(double **u, size_t N) {
+  double **copy = alloc_matrix(N);
+  if (copy == NULL)
+    return NULL;
+
+  for (size_t i = 0; i < N; i++)
+    memcpy(copy[i], u[i], N * sizeof(double));
+
+  return copy;
+}
+
 int init_pb(double eps, int64_t N, problem *pb) {
 
   if (N < 2)
@@ -84,6 +99,7 @@ int init_pb(double eps, int64_t N, problem *pb) {
   pb->h = 1.0 / (N - 1);
   pb->eps = eps;
   pb->iters = 0;
+  pb->l = 1;
 
   return 0;
 }
@@ -170,6 +186,8 @@ int process_blocks(problem *pb) {
     }
     pb->iters++;
 
+    printf("%f\n", dmax);
+
   } while (dmax > pb->eps);
   free(dm);
 
@@ -203,19 +221,73 @@ double kx3_p_2ky3(double x, double y) {
   return 1000 * pow(x, 3) + 2000 * pow(y, 3);
 }
 
-void check(problem *pb, func_R2 u) {
-  printf("iters: %ld\n", pb->iters);
+void save_result(problem *pb, int index) {
+  char name[50];
+  snprintf(name, 50, "experiments/res_%d.csv", index);
+  printf("%s\n", name);
 
-  for (size_t i = 1; i < pb->size - 1; i++) {
-    for (size_t j = 1; j < pb->size - 1; j++) {
-      printf("%7.2f ", fabs(pb->u[i][j] - u(x_i(i, pb), y_j(j, pb))));
+  FILE *fl = fopen(name, "w");
+  printf("%s\n", name);
+  for (int64_t i = 0; i < pb->size; i++) {
+    for (int64_t j = 0; j < pb->size - 1; j++) {
+      fprintf(fl, "%f,", pb->u[i][j]);
     }
-    printf("\n");
+    fprintf(fl, "%f\n", pb->u[i][pb->size - 1]);
   }
+  fclose(fl);
 }
 
-void main(void) {
-  omp_set_num_threads(8);
-  problem *pb = approximate(0.1, 20, d_kx3_p_2ky3, kx3_p_2ky3);
-  check(pb, kx3_p_2ky3);
+void save_answer(problem *pb, func_R2 u, int index) {
+  char name[50];
+  snprintf(name, 50, "experiments/ans_%d.csv", index);
+
+  FILE *ans = fopen(name, "w");
+
+  for (int64_t i = 0; i < pb->size; i++) {
+    for (int64_t j = 0; j < pb->size - 1; j++) {
+      fprintf(ans, "%f,", u(x_i(i, pb), y_j(j, pb)));
+    }
+    fprintf(ans, "%f\n", u(x_i(i, pb), y_j((pb->size - 1), pb)));
+  }
+  fclose(ans);
+}
+
+void save_meta(problem *pb, double t, int th_n, int index) {
+  char name[50];
+  snprintf(name, 50, "experiments/met_%d.json", index);
+
+  FILE *cfg = fopen(name, "w");
+
+  fprintf(cfg, "{");
+
+  fprintf(cfg, "\"h\":%f,", pb->h);
+  fprintf(cfg, "\"eps\":%f,", pb->eps);
+  fprintf(cfg, "\"time\":%f,", t);
+  fprintf(cfg, "\"N\":%ld,", pb->size);
+  fprintf(cfg, "\"iters\":%ld,", pb->iters);
+  fprintf(cfg, "\"thr_n\":%d,", th_n);
+  fprintf(cfg, "\"x_y\":[%f, %f],", pb->x0, pb->y0);
+  fprintf(cfg, "\"side_l\":%f,", pb->l);
+  fprintf(cfg, "\"bs\":%d", BLOCK_SIZE);
+
+  fprintf(cfg, "}");
+  fclose(cfg);
+}
+
+void save_csv(problem *pb, func_R2 u, double t, int th_n, int index) {
+  save_result(pb, index);
+  save_answer(pb, u, index);
+  save_meta(pb, t, th_n, index);
+}
+
+int main(void) {
+  int th_n = 8;
+  omp_set_num_threads(th_n);
+
+  double start_t = omp_get_wtime();
+  problem *pb = approximate(0.1, 10, d_kx3_p_2ky3, kx3_p_2ky3);
+  double end_t = omp_get_wtime();
+
+  save_csv(pb, kx3_p_2ky3, end_t - start_t, th_n, 2);
+  return 0;
 }
