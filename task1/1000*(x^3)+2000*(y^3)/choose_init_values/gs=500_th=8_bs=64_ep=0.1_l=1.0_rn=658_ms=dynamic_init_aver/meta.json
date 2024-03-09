@@ -1,0 +1,16 @@
+{
+  "h": 0.002004,
+  "eps": 0.1,
+  "N": 500,
+  "iters": 4997,
+  "thr_n": 8,
+  "x_y": [0.0, 0.0],
+  "side_l": 1.0,
+  "bs": 64,
+  "spec_info": "dynamic_init_aver",
+  "max_init": 658,
+  "time": 1.672854,
+  "max_err": 557.98,
+  "aver_err": 201.36,
+  "std_err": 149.37
+}

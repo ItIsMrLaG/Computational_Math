@@ -3,10 +3,12 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 #include "main.h"
 
 #define BLOCK_SIZE 64
+#define INIT_MODULE 1000
 
 #define x_i(i, pb) (pb->h * i)
 #define y_j(j, pb) (pb->h * j)
@@ -16,6 +18,7 @@
 
 #define CEIL_DIV_UP(x, y) ((x + y - 1) / y)
 #define MIN(a, b) (((a) < (b)) ? (a) : (b))
+#define MAX(a, b) (((a) > (b)) ? (a) : (b))
 
 typedef double (*func_R2)(double, double);
 
@@ -31,6 +34,7 @@ typedef struct problem {
   double x0;
   double y0;
   double l;
+  size_t max_init;
 } problem;
 
 void free_matrix(double **u, int64_t N) {
@@ -56,16 +60,32 @@ double **alloc_matrix(int64_t N) {
 }
 
 void init_matrixes(func_R2 f, func_R2 u, problem *pb) {
+  srand(time(NULL));
+
+  int64_t mod = 0;
+  int n = 0;
+
   for (int64_t i = 0; i < pb->size; i++) {
     for (int64_t j = 0; j < pb->size; j++) {
-      if ((i == 0) || (j == 0) || (i == pb->size - 1) || (j == pb->size - 1))
+      if ((i == 0) || (j == 0) || (i == pb->size - 1) || (j == pb->size - 1)) {
         pb->u[i][j] = u(x_i(i, pb), y_j(j, pb));
-      else
-        pb->u[i][j] = 0;
-
+        n += 1;
+        mod = (mod * (n - 1) + (int64_t)pb->u[i][j]) / n;
+      }
       pb->f[i][j] = f(x_i(i, pb), y_j(j, pb));
     }
   }
+
+  for (int64_t i = 1; i < pb->size - 1; i++) {
+    for (int64_t j = 1; j < pb->size - 1; j++) {
+      if (mod == 0)
+        pb->u[i][j] = 0;
+      else
+        pb->u[i][j] = mod;
+    }
+  }
+
+  pb->max_init = mod;
 }
 
 double **alloc_copy(double **u, size_t N) {
@@ -215,19 +235,11 @@ problem *approximate(double eps, int64_t sz, func_R2 f, func_R2 u) {
 
 /* =================================================== */
 
-double d_kx3_p_2ky3(double x, double y) { return 6000 * x + 12000 * y; }
-
-double kx3_p_2ky3(double x, double y) {
-  return 1000 * pow(x, 3) + 2000 * pow(y, 3);
-}
-
 void save_result(problem *pb, int index) {
   char name[50];
   snprintf(name, 50, "experiments/res_%d.csv", index);
-  printf("%s\n", name);
 
   FILE *fl = fopen(name, "w");
-  printf("%s\n", name);
   for (int64_t i = 0; i < pb->size; i++) {
     for (int64_t j = 0; j < pb->size - 1; j++) {
       fprintf(fl, "%f,", pb->u[i][j]);
@@ -252,7 +264,7 @@ void save_answer(problem *pb, func_R2 u, int index) {
   fclose(ans);
 }
 
-void save_meta(problem *pb, double t, int th_n, int index) {
+void save_meta(problem *pb, double t, int th_n, int index, char *info) {
   char name[50];
   snprintf(name, 50, "experiments/met_%d.json", index);
 
@@ -267,27 +279,49 @@ void save_meta(problem *pb, double t, int th_n, int index) {
   fprintf(cfg, "\"iters\":%ld,", pb->iters);
   fprintf(cfg, "\"thr_n\":%d,", th_n);
   fprintf(cfg, "\"x_y\":[%f, %f],", pb->x0, pb->y0);
+  fprintf(cfg, "\"max_init\":%ld,", pb->max_init);
   fprintf(cfg, "\"side_l\":%f,", pb->l);
+  fprintf(cfg, "\"spec_info\":\"%s\",", info);
   fprintf(cfg, "\"bs\":%d", BLOCK_SIZE);
 
   fprintf(cfg, "}");
   fclose(cfg);
 }
 
-void save_csv(problem *pb, func_R2 u, double t, int th_n, int index) {
+void save_csv(problem *pb, func_R2 u, double t, int th_n, int index,
+              char *info) {
   save_result(pb, index);
   save_answer(pb, u, index);
-  save_meta(pb, t, th_n, index);
+  save_meta(pb, t, th_n, index, info);
 }
+
+double d_kx3_p_2ky3(double x, double y) { return 6000 * x + 12000 * y; }
+
+double kx3_p_2ky3(double x, double y) {
+  return 1000 * pow(x, 3) + 2000 * pow(y, 3);
+}
+
+double f_sin(double x, double y) { return sin(x) + 0 * y; }
+
+double d_f_sin_xy(double x, double y) {
+  double hm = pow(y, 3);
+  if (hm == 0) {
+    return 2 * cos(x) - x * sin(x) +
+           (2 * y * sin(y) - (y * y - 2) * cos(y)) / 1e-15;
+  }
+  return 2 * cos(x) - x * sin(x) + (2 * y * sin(y) - (y * y - 2) * cos(y)) / hm;
+}
+
+double f_sin_xy(double x, double y) { return x * sin(x) + cos(y) / y; }
 
 int main(void) {
   int th_n = 8;
   omp_set_num_threads(th_n);
 
   double start_t = omp_get_wtime();
-  problem *pb = approximate(0.1, 10, d_kx3_p_2ky3, kx3_p_2ky3);
+  problem *pb = approximate(0.1, 500, d_f_sin_xy, f_sin_xy);
   double end_t = omp_get_wtime();
 
-  save_csv(pb, kx3_p_2ky3, end_t - start_t, th_n, 2);
+  save_csv(pb, f_sin_xy, end_t - start_t, th_n, 2, "");
   return 0;
 }
