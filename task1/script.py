@@ -17,13 +17,13 @@ def generate_preview(res_m: np.ndarray, ans_m: np.ndarray, config: dict, func_na
     ax.set_title("Approximation")
     ax.plot_surface(X, Y, res_m, rstride=1, cstride=1,
                     cmap='viridis', edgecolor='none')
-    ax.view_init(50, 100)
+    ax.view_init(50, 120)
 
     ax = fig.add_subplot(1, 2, 2, projection='3d')
     ax.set_title("Function")
     ax.plot_surface(X, Y, ans_m, rstride=1, cstride=1,
                     cmap='viridis', edgecolor='none')
-    ax.view_init(50, 100)
+    ax.view_init(50, 120)
 
     return fig
 
@@ -40,7 +40,7 @@ def get_path(dir: str):
         if name.find("res") != -1:
             i = name.replace("res_", "")
             i = int(i.replace(".csv", ""))
-            inds.add(i)
+            inds.add(i) 
             res[i] = str(os.path.join(dir, name))
 
         elif name.find("ans") != -1:
@@ -62,23 +62,27 @@ def generate_result(res_p: str, ans_p: str, met_p: str, sav_p: str):
 
     ans_matrix = pd.read_csv(ans_p, sep=',', header=None).values
     res_matrix = pd.read_csv(res_p, sep=',', header=None).values
-    max_err = np.max(np.abs(res_matrix - ans_matrix))
-    aver_err = np.average(np.abs(res_matrix - ans_matrix))
+
+    d = np.abs(res_matrix - ans_matrix)
+    max_err = np.max(d)
+    aver_err = np.average(d)
+    std_err = np.std(d)
     cfg["max_err"] = round(max_err, 2)
     cfg["aver_err"] = round(aver_err, 2)
+    cfg["std_err"] = round(std_err, 2)
 
-    ex_name = f"gs={cfg["N"]}_th={cfg["thr_n"]}_bs={cfg["bs"]}_eps={cfg["eps"]}"
+    ex_name = f"gs={cfg["N"]}_th={cfg["thr_n"]}_bs={cfg["bs"]}_ep={cfg["eps"]}_l={cfg["side_l"]}_rn={cfg["max_init"]}_ms={cfg["spec_info"]}"
     ex_path = os.path.join(sav_p, ex_name)
     if not os.path.exists(ex_path):
         os.mkdir(ex_path)
 
-    img = generate_preview(ans_matrix, res_matrix, cfg, func_name)
+    img = generate_preview(res_matrix, ans_matrix, cfg, func_name)
     img.savefig(str(os.path.join(ex_path, "img.png")))
     with open(os.path.join(ex_path, "meta.json"), 'w', encoding='utf-8') as f:
         json.dump(cfg, f)
 
 if __name__ == '__main__':
-    func_name = "1000*(x^3)+2000*(y^3)"
+    func_name = "sin(x)"
     main_path = os.path.join("./", func_name)
 
     keys, r, a, m = get_path("experiments")
