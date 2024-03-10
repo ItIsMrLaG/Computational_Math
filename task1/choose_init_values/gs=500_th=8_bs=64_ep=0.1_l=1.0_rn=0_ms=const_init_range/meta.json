@@ -1,0 +1,16 @@
+{
+  "h": 0.002004,
+  "eps": 0.1,
+  "N": 500,
+  "iters": 6810,
+  "thr_n": 8,
+  "x_y": [0.0, 0.0],
+  "side_l": 1.0,
+  "bs": 64,
+  "spec_info": "const_init_range",
+  "max_init": 0,
+  "time": 2.192899,
+  "max_err": 943.24,
+  "aver_err": 335.14,
+  "std_err": 264.99
+}

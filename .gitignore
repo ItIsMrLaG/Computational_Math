@@ -19,7 +19,11 @@ cmake-build-debug
 .vscode
 **code-workspace
 
+#python
+**__pycache__
+
 # Local
 experiments
 build
 **.ipynb
+**LARGE
