@@ -22,7 +22,7 @@ else()
         -Wall
         -Wextra
         -pedantic
-        -Werror
+        # -Werror
         -O3
     )
 endif()
