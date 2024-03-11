@@ -7,38 +7,45 @@
 
 int main(void) {
   int64_t fc = 0;
-  func_R2 test_f[] = {f_kx3_p_2ky3, f_sin, f_linear};
-  func_R2 test_d[] = {d_kx3_p_2ky3, d_sin, d_linear};
-  char* name[] = {n_kx3_p_2ky3, n_sin, n_linear};
+  int64_t fc_ = 1;
+  func_R2 test_f[] = {f_linear};
+  func_R2 test_d[] = {d_linear};
+  char* name[] = {n_linear};
 
   int64_t tc = 0;
-  int threads[] = {1, 4, 8, 12};
+  int64_t tc_ = 1;
+  int threads[] = {8};
 
   int64_t ec = 0;
+  int64_t ec_ = 3;
   double eps[] = {0.1, 0.01, 0.001};
 
   int64_t Nc = 0;
+  int64_t Nc_ = 5;
   int N[] = {10, 50, 100, 500, 1000};
 
   int64_t bsc = 0;
-  int bs[] = {4, 16, 64, 128};
+  int64_t bsc_ = 1;
+  int bs[] = {64};
 
 
-  for(fc = 0; fc<3; fc++){
-    for(tc = 0; tc<4; tc++){
+  for(fc = 0; fc<fc_; fc++){
+    for(tc = 0; tc<tc_; tc++){
       for(ec = 0; ec<3; ec++){
-         for(Nc = 0; Nc<5; Nc++){
-            for(bsc = 0; bsc<4; bsc++){
-              omp_set_num_threads(threads[tc]);
+         for(Nc = 0; Nc<Nc_; Nc++){
+            for(bsc = 0; bsc<bsc_; bsc++){
+              for(int k = 0; k < 10; k++){
+                omp_set_num_threads(threads[tc]);
 
-              double start_t = omp_get_wtime();
-              problem *pb = approximate(eps[ec], N[Nc], bs[bsc], test_d[fc], test_f[fc]);
-              double end_t = omp_get_wtime();
-              
-              int64_t flg = fc + 10*tc + 100*ec + 1000*Nc + 10000*bsc;
-              save_csv(pb, test_f[fc], end_t - start_t, tc, flg, name[fc]);
+                double start_t = omp_get_wtime();
+                problem *pb = approximate(eps[ec], N[Nc], bs[bsc], test_d[fc], test_f[fc]);
+                double end_t = omp_get_wtime();
+                
+                int64_t flg = fc + 10*tc + 100*ec + 1000*Nc + 10000*bsc + 10000000*k;
+                save_csv(pb, test_f[fc], end_t - start_t, threads[tc], flg, name[fc]);
 
-              printf("%ld\n", flg);
+              printf("%d) %ld\n",k , flg);
+              }
             }
          }
       }

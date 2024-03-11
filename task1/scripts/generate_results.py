@@ -1,4 +1,5 @@
 import os 
+import time
 import numpy as np
 import matplotlib.pyplot as plt
 import pandas as pd
@@ -62,14 +63,11 @@ def generate_result(res_p: str, ans_p: str, sav_p: str, img: bool, cfg: dict):
     max_err = np.max(d)
     aver_err = np.average(d)
     std_err = np.std(d)
-    k = [1, 4, 8, 12]
     cfg["max_err"] = round(max_err, 2)
     cfg["aver_err"] = round(aver_err, 2)
     cfg["std_err"] = round(std_err, 2)
-    cfg["thr_n"] = k[int(cfg["thr_n"])]
-    print(cfg["thr_n"])
 
-    ex_name = f"gs={cfg["N"]}_th={cfg["thr_n"]}_bs={cfg["bs"]}_ep={cfg["eps"]}_l={cfg["side_l"]}_rn={cfg["max_init"]}_ms={cfg["spec_info"]}"
+    ex_name = f"gs={cfg["N"]}_th={cfg["thr_n"]}_bs={cfg["bs"]}_ep={cfg["eps"]}_l={cfg["side_l"]}_rn={cfg["max_init"]}_ms={cfg["spec_info"]}_{round(time.time())}"
     ex_path = os.path.join(sav_p, ex_name)
     if not os.path.exists(ex_path):
         os.mkdir(ex_path)

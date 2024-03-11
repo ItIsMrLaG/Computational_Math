@@ -1,6 +1,5 @@
 file(GLOB_RECURSE C_SOURCES ./*.c)
 
-# target_include_directories(main PUBLIC "${CMAKE_SOURCE_DIR}/include")
 find_package(OpenMP)
 
 if(OPENMP_FOUND)
