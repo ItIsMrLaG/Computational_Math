@@ -85,5 +85,5 @@ if __name__ == '__main__':
     test_dirs = [d for d in dirs(args.parent_dir)]
     res = create_table(test_dirs, args.save_dir)
 
-    res.to_csv(os.path.join(args.save_dir, "REPORT.csv"))
-    res.to_html(os.path.join(args.save_dir, "REPORT.html"))
+    res.to_csv(os.path.join(args.save_dir, "REPORT.csv"), index=False)
+    res.to_html(os.path.join(args.save_dir, "REPORT.html"), index=False)

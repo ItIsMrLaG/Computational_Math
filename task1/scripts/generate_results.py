@@ -55,7 +55,7 @@ def get_path(dir: str):
             met[i] = str(os.path.join(dir, name))
     return list(inds), res, ans, met
 
-def generate_result(res_p: str, ans_p: str, sav_p: str, img: bool, cfg: dict):
+def generate_result(id: str, res_p: str, ans_p: str, sav_p: str, img: bool, cfg: dict):
     ans_matrix = pd.read_csv(ans_p, sep=',', header=None).values
     res_matrix = pd.read_csv(res_p, sep=',', header=None).values
 
@@ -63,11 +63,11 @@ def generate_result(res_p: str, ans_p: str, sav_p: str, img: bool, cfg: dict):
     max_err = np.max(d)
     aver_err = np.average(d)
     std_err = np.std(d)
-    cfg["max_err"] = round(max_err, 2)
-    cfg["aver_err"] = round(aver_err, 2)
-    cfg["std_err"] = round(std_err, 2)
+    cfg["max_err"] = round(max_err, 6)
+    cfg["aver_err"] = round(aver_err, 6)
+    cfg["std_err"] = round(std_err, 6)
 
-    ex_name = f"gs={cfg["N"]}_th={cfg["thr_n"]}_bs={cfg["bs"]}_ep={cfg["eps"]}_l={cfg["side_l"]}_rn={cfg["max_init"]}_ms={cfg["spec_info"]}_{round(time.time())}"
+    ex_name = f"gs={cfg["N"]}_th={cfg["thr_n"]}_bs={cfg["bs"]}_ep={cfg["eps"]}_l={cfg["side_l"]}_rn={cfg["max_init"]}_ms={cfg["spec_info"]}_{id}"
     ex_path = os.path.join(sav_p, ex_name)
     if not os.path.exists(ex_path):
         os.mkdir(ex_path)
@@ -98,4 +98,4 @@ if __name__ == '__main__':
         if not os.path.exists(main_path):
             os.mkdir(main_path)
 
-        generate_result(r[key], a[key], main_path, bool(args.img), cfg)
+        generate_result(key, r[key], a[key], main_path, bool(args.img), cfg)

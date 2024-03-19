@@ -9,6 +9,11 @@ static const char *n_kx3_p_2ky3 = "1000*x^3+2000*y^3";
 double f_kx3_p_2ky3(double x, double y);
 double d_kx3_p_2ky3(double x, double y);
 
+/* f(x, y) := x^3 + y^3 */
+static const char *n_x3_p_y3 = "x^3+y^3";
+double f_x3_p_y3(double x, double y);
+double d_x3_p_y3(double x, double y);
+
 /* f(x, y) := sin(x) */
 static const char *n_sin = "sin(x)";
 double f_sin(double x, double y);
@@ -23,6 +28,11 @@ double d_sin_xy(double x, double y);
 static const char *n_linear = "x+y";
 double f_linear(double x, double y);
 double d_linear(double x, double y);
+
+/* f(x, y) := 2000*x + 100*y */
+static const char *n_linearH = "2000*x+100*y";
+double f_linearH(double x, double y);
+double d_linearH(double x, double y);
 
 /* f(x, y) := sin(x) + sin(y) */
 static const char *n_sin2 = "sin(x)+sin(y)";
