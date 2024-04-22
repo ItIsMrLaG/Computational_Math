@@ -1,5 +1,7 @@
 import argparse
 from pathlib import Path
+from random import normalvariate
+
 import PIL.Image
 import numpy as np
 from PIL import Image
@@ -35,6 +37,48 @@ class StandardSVD(ToSVD):
     def get_svd(self, mt: np.matrix) -> SVD:
         u, s, vt = np.linalg.svd(mt, full_matrices=False)
         return SVD(np.matrix(u), s, np.matrix(vt))
+
+
+class PowerMethodSVD(ToSVD):
+    @staticmethod
+    def _random_unit_vector(n: int) -> np.ndarray:
+        un_norm = np.array([normalvariate(0, 1) for _ in range(n)])
+        norm = np.linalg.norm(un_norm)
+        return un_norm / norm
+
+    def _get_singular_vector(self, mt: np.matrix):
+        epsilon: float = 1e-10
+        n, m = mt.shape
+        curV: np.ndarray = self._random_unit_vector(m)
+        AtA: np.matrix = mt.T @ mt
+
+        while True:
+            lastV = curV
+            curV = np.array(AtA @ lastV)[0]
+            curV = curV / np.linalg.norm(curV)
+
+            if abs(curV @ lastV) > 1 - epsilon:
+                return curV
+
+    def get_svd(self, mt: np.matrix) -> SVD:
+        n, m = mt.shape
+        svd_decomposition: list[tuple[float, np.ndarray, np.ndarray]] = []
+
+        for i in range(m):
+            iter_mt = mt.copy().astype(np.float32)
+            for s_i, u, v in svd_decomposition[:i]:
+                iter_mt -= s_i * np.outer(u, v)
+
+            v = self._get_singular_vector(iter_mt)
+            u_un_norm = mt @ v
+            sigma_i: float = np.linalg.norm(u_un_norm)
+            u = u_un_norm / sigma_i
+
+            svd_decomposition.append((sigma_i, u, v))
+
+        s, u, vt = [np.array(x) for x in zip(*svd_decomposition)]
+
+        return SVD(np.matrix(u.T), s, vt)
 
 
 @dataclass
@@ -118,7 +162,7 @@ class BMP24Compressor:
     def compress_bmp(self, img: PIL.Image.Image, N: float = -1.) -> SVDPixels:
         def k():
             img_size: int = PIXEL_SIZE * m * n + BMP_HEADER_SIZE
-            k_val: int = int(img_size // (N * (m + n + 1) * COLOR_NUMBERS * FLOAT_SIZE + COMPRESSED_HEADER))
+            k_val: int = int(img_size // (N * (m + n + 1) * COLOR_NUMBERS * FLOAT_SIZE))
             if k_val <= 0:
                 print(f"Can't compress image in {N} times")
                 exit(1)
@@ -240,7 +284,7 @@ MODE_COMPRESS: str = "compress"
 MODE_DECOMPRESS: str = "decompress"
 
 SVD_ALGO_NUMPY: str = "numpy"
-SVD_ALGO_DUMMY: str = "dummy"
+SVD_ALGO_DUMMY: str = "power"
 SVD_ALGO_ADVANCED: str = "advanced"
 
 
@@ -291,7 +335,7 @@ if __name__ == "__main__":
         if algo_type == SVD_ALGO_NUMPY:
             svder = StandardSVD()
         elif algo_type == SVD_ALGO_DUMMY:
-            ...
+            svder = PowerMethodSVD()
         elif algo_type == SVD_ALGO_ADVANCED:
             ...
         else:
@@ -300,7 +344,6 @@ if __name__ == "__main__":
             exit(1)
 
         compressor: BMP24Compressor = BMP24Compressor(svder)
-
         compressed_img: SVDPixels = compressor.compress_bmp(img, args["N"])
         serializer.serialize(compressed_img, Path(outfile))
 
