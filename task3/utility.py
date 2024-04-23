@@ -1,4 +1,5 @@
 import argparse
+import time
 from pathlib import Path
 from random import normalvariate
 
@@ -33,39 +34,88 @@ class ToSVD(Protocol):
         ...
 
 
+class Limited:
+    ms_limit: float | None
+    limit_start: float
+    working_time: float
+    MSG: str = "Time limit in milliseconds too small :("
+
+    def __init__(self, ms_limit=None):
+        self.ms_limit = ms_limit
+        self.fix_limit_start()
+
+    def fix_limit_start(self) -> None:
+        self.limit_start = time.time() * 1000
+
+    @staticmethod
+    def get_time_ms() -> float:
+        return time.time() * 1000
+
+    def is_time_out(self) -> bool:
+        self.working_time = self.get_time_ms()
+        if self.ms_limit is not None and (self.working_time - self.limit_start) >= self.ms_limit:
+            return True
+        return False
+
+
 class StandardSVD(ToSVD):
+    lm: Limited
+
+    def __init__(self, ms_limit=None):
+        self.lm = Limited(ms_limit)
+
     def get_svd(self, mt: np.matrix) -> SVD:
+        self.lm.fix_limit_start()
         u, s, vt = np.linalg.svd(mt, full_matrices=False)
+
+        if self.lm.is_time_out():
+            print(self.lm.MSG + "\n" + f"working_time: {self.lm.working_time}")
         return SVD(np.matrix(u), s, np.matrix(vt))
 
 
 class PowerMethodSVD(ToSVD):
+    EPSILON: float = 1e-10
+
+    def __init__(self, ms_limit=None):
+        self.lm = Limited(ms_limit)
+
     @staticmethod
-    def _random_unit_vector(n: int) -> np.ndarray:
+    def random_unit_vector(n: int) -> np.ndarray:
         un_norm = np.array([normalvariate(0, 1) for _ in range(n)])
         norm = np.linalg.norm(un_norm)
         return un_norm / norm
 
     def _get_singular_vector(self, mt: np.matrix):
-        epsilon: float = 1e-10
-        n, m = mt.shape
-        curV: np.ndarray = self._random_unit_vector(m)
+        _, m = mt.shape
+        curV: np.ndarray = self.random_unit_vector(m)
         AtA: np.matrix = mt.T @ mt
+        i: int = 0
+
+        self.lm.fix_limit_start()
 
         while True:
+            if self.lm.is_time_out():
+                if i == 0:
+                    print(self.lm.MSG)
+                    exit(0)
+                return curV
+            i += 1
+
             lastV = curV
             curV = np.array(AtA @ lastV)[0]
             curV = curV / np.linalg.norm(curV)
 
-            if abs(curV @ lastV) > 1 - epsilon:
+            if abs(curV @ lastV) > 1 - self.EPSILON:
                 return curV
 
     def get_svd(self, mt: np.matrix) -> SVD:
-        n, m = mt.shape
+        _, m = mt.shape
         svd_decomposition: list[tuple[float, np.ndarray, np.ndarray]] = []
+        self.lm.ms_limit = self.lm.ms_limit / m
 
         for i in range(m):
             iter_mt = mt.copy().astype(np.float32)
+
             for s_i, u, v in svd_decomposition[:i]:
                 iter_mt -= s_i * np.outer(u, v)
 
@@ -81,12 +131,57 @@ class PowerMethodSVD(ToSVD):
         return SVD(np.matrix(u.T), s, vt)
 
 
+class PowerAdvancedMethodSVD(PowerMethodSVD):
+
+    def __init__(self, ms_limit=None):
+        super().__init__(ms_limit)
+
+    def get_svd(self, mt: np.matrix) -> SVD:
+        n, m = mt.shape
+        s = min(m, n)
+
+        V0: np.matrix = np.matrix(
+            [self.random_unit_vector(s) for _ in range(m)]
+        )
+
+        self.lm.fix_limit_start()
+        err: float = self.EPSILON + 1
+        i: int = 0
+
+        V: np.matrix = V0
+        U: np.matrix
+        S: np.ndarray
+
+        while err > self.EPSILON:
+            if self.lm.is_time_out():
+                break
+
+            i += 1
+            qr = np.linalg.qr(mt @ V)
+            U = np.matrix(qr.Q[:, 0:s])
+
+            qr = np.linalg.qr(mt.T @ U)
+            V = np.matrix(qr.Q[:, 0:s])
+            S = np.matrix(qr.R[0:s, 0:s])
+
+            err = np.linalg.norm(mt @ V - U @ S)
+        if i == 0:
+            print(self.lm.MSG)
+            exit(1)
+        else:
+            return SVD(U, np.diagonal(S).astype(np.float32), V.T)
+
+
 @dataclass
 class MatrixCompressor:
     svd: ToSVD
 
     def compress(self, k: int, mt: np.matrix) -> SVD:
         s: SVD = self.svd.get_svd(mt)
+
+        if k <= 0:
+            return s
+
         u: np.matrix = np.matrix(s.U.compress([True] * k, axis=1))
         vt: np.matrix = np.matrix(s.VT.compress([True] * k, axis=0))
         return SVD(u, s.S[:k], vt)
@@ -169,10 +264,14 @@ class BMP24Compressor:
             return k_val
 
         m, n = img.size
-        if N <= 0:
-            lines_n: int = min(n, m)
+        lines: int
+
+        if N == 1:
+            lines_n = 0
+        elif N <= 0:
+            lines_n = min(n, m)
         else:
-            lines_n: int = min(n, m, k())
+            lines_n = min(n, m, k())
 
         colors: BMPPixels24 = BMPPixels24()
         colors.from_img(img)
@@ -192,6 +291,7 @@ class Serializer:
     N_size: int = 4  # bytes
     K_size: int = 4  # bytes
     ORDER: str = "RGB"
+    NAME: str = ".BMP.cp"
 
     @staticmethod
     def _serialize_color(color: SVD) -> bytearray:
@@ -285,13 +385,13 @@ MODE_DECOMPRESS: str = "decompress"
 
 SVD_ALGO_NUMPY: str = "numpy"
 SVD_ALGO_DUMMY: str = "power"
-SVD_ALGO_ADVANCED: str = "advanced"
+SVD_ALGO_ADVANCED: str = "power-advanced"
 
 
 def parse_args() -> dict[str, Any]:
     pars = argparse.ArgumentParser()
-    pars.add_argument("--in_file", type=str, default="a.in", help="Path to source file")
-    pars.add_argument("--out_file", type=str, default="a.out", help="Path to result file")
+    pars.add_argument("--in_file", type=str, default="in", help="Path to source file")
+    pars.add_argument("--out_file", type=str, default="out", help="Path to result file")
     pars.add_argument("--mode", type=str, default=MODE_COMPRESS,
                       help=f"Choose: <{MODE_COMPRESS}> or <{MODE_DECOMPRESS}>")
     pars.add_argument(
@@ -337,7 +437,7 @@ if __name__ == "__main__":
         elif algo_type == SVD_ALGO_DUMMY:
             svder = PowerMethodSVD()
         elif algo_type == SVD_ALGO_ADVANCED:
-            ...
+            svder = PowerAdvancedMethodSVD()
         else:
             print(
                 f"SVD-algorithm not supported (choose from: {SVD_ALGO_NUMPY} or {SVD_ALGO_DUMMY} or {SVD_ALGO_ADVANCED})")
@@ -345,7 +445,7 @@ if __name__ == "__main__":
 
         compressor: BMP24Compressor = BMP24Compressor(svder)
         compressed_img: SVDPixels = compressor.compress_bmp(img, args["N"])
-        serializer.serialize(compressed_img, Path(outfile))
+        serializer.serialize(compressed_img, Path(outfile + Serializer.NAME))
 
         print(f"[COMPRESS] {infile} to {outfile}")
 
