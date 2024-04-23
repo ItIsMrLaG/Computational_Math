@@ -30,7 +30,7 @@ class SVD:
 
 class ToSVD(Protocol):
     @abc.abstractmethod
-    def get_svd(self, mt: np.matrix) -> SVD:
+    def get_svd(self, k: int, mt: np.matrix) -> SVD:
         ...
 
 
@@ -64,19 +64,25 @@ class StandardSVD(ToSVD):
     def __init__(self, ms_limit=None):
         self.lm = Limited(ms_limit)
 
-    def get_svd(self, mt: np.matrix) -> SVD:
+    def get_svd(self, k: int, mt: np.matrix) -> SVD:
         self.lm.fix_limit_start()
         u, s, vt = np.linalg.svd(mt, full_matrices=False)
 
         if self.lm.is_time_out():
             print(self.lm.MSG + "\n" + f"working_time: {self.lm.working_time}")
+
+        u = np.matrix(u.compress([True] * k, axis=1))
+        vt = np.matrix(vt.compress([True] * k, axis=0))
+        return SVD(u, s[:k], vt)
+
         return SVD(np.matrix(u), s, np.matrix(vt))
 
 
 class PowerMethodSVD(ToSVD):
-    EPSILON: float = 1e-10
+    EPSILON: float
 
     def __init__(self, ms_limit=None):
+        self.EPSILON = 1e-10
         self.lm = Limited(ms_limit)
 
     @staticmethod
@@ -95,10 +101,8 @@ class PowerMethodSVD(ToSVD):
 
         while True:
             if self.lm.is_time_out():
-                if i == 0:
-                    print(self.lm.MSG)
-                    exit(0)
-                return curV
+                if i != 0:
+                    return curV
             i += 1
 
             lastV = curV
@@ -108,12 +112,14 @@ class PowerMethodSVD(ToSVD):
             if abs(curV @ lastV) > 1 - self.EPSILON:
                 return curV
 
-    def get_svd(self, mt: np.matrix) -> SVD:
+    def get_svd(self, k: int, mt: np.matrix) -> SVD:
         _, m = mt.shape
         svd_decomposition: list[tuple[float, np.ndarray, np.ndarray]] = []
-        self.lm.ms_limit = self.lm.ms_limit / m
 
-        for i in range(m):
+        if self.lm.ms_limit is not None:
+            self.lm.ms_limit = self.lm.ms_limit / k
+
+        for i in range(k):
             iter_mt = mt.copy().astype(np.float32)
 
             for s_i, u, v in svd_decomposition[:i]:
@@ -135,13 +141,13 @@ class PowerAdvancedMethodSVD(PowerMethodSVD):
 
     def __init__(self, ms_limit=None):
         super().__init__(ms_limit)
+        self.EPSILON = 0.01
 
-    def get_svd(self, mt: np.matrix) -> SVD:
+    def get_svd(self, k: int, mt: np.matrix) -> SVD:
         n, m = mt.shape
-        s = min(m, n)
 
         V0: np.matrix = np.matrix(
-            [self.random_unit_vector(s) for _ in range(m)]
+            [self.random_unit_vector(k) for _ in range(m)]
         )
 
         self.lm.fix_limit_start()
@@ -158,11 +164,11 @@ class PowerAdvancedMethodSVD(PowerMethodSVD):
 
             i += 1
             qr = np.linalg.qr(mt @ V)
-            U = np.matrix(qr.Q[:, 0:s])
+            U = np.matrix(qr.Q[:, 0:k])
 
             qr = np.linalg.qr(mt.T @ U)
-            V = np.matrix(qr.Q[:, 0:s])
-            S = np.matrix(qr.R[0:s, 0:s])
+            V = np.matrix(qr.Q[:, 0:k])
+            S = np.matrix(qr.R[0:k, 0:k])
 
             err = np.linalg.norm(mt @ V - U @ S)
         if i == 0:
@@ -170,25 +176,6 @@ class PowerAdvancedMethodSVD(PowerMethodSVD):
             exit(1)
         else:
             return SVD(U, np.diagonal(S).astype(np.float32), V.T)
-
-
-@dataclass
-class MatrixCompressor:
-    svd: ToSVD
-
-    def compress(self, k: int, mt: np.matrix) -> SVD:
-        s: SVD = self.svd.get_svd(mt)
-
-        if k <= 0:
-            return s
-
-        u: np.matrix = np.matrix(s.U.compress([True] * k, axis=1))
-        vt: np.matrix = np.matrix(s.VT.compress([True] * k, axis=0))
-        return SVD(u, s.S[:k], vt)
-
-    @staticmethod
-    def decompress(compressed: SVD) -> np.matrix:
-        return compressed.full_matrix()
 
 
 class BMPPixels24:
@@ -248,11 +235,9 @@ class SVDPixels:
         raise Exception("Only 'R', 'G', 'B' indexes are available")
 
 
+@dataclass
 class BMP24Compressor:
-    compressor: MatrixCompressor
-
-    def __init__(self, svd: ToSVD):
-        self.compressor = MatrixCompressor(svd)
+    to_svd: ToSVD
 
     def compress_bmp(self, img: PIL.Image.Image, N: float = -1.) -> SVDPixels:
         def k():
@@ -275,7 +260,7 @@ class BMP24Compressor:
 
         colors: BMPPixels24 = BMPPixels24()
         colors.from_img(img)
-        r, g, b = tuple([self.compressor.compress(lines_n, clr) for clr in colors.RGB])
+        r, g, b = tuple([self.to_svd.get_svd(lines_n, clr) for clr in colors.RGB])
         return SVDPixels(r, g, b)
 
     @staticmethod
@@ -401,6 +386,7 @@ def parse_args() -> dict[str, Any]:
         help=f"Choose SVD-algorithm: {SVD_ALGO_NUMPY} or {SVD_ALGO_DUMMY} or {SVD_ALGO_ADVANCED}",
     )
     pars.add_argument("-N", type=int, default=2, help="N = original-img-size / compressed-img-size")
+    pars.add_argument("-t", type=int, default=1000, help="Time limit in ms")
     return pars.parse_args().__dict__
 
 
@@ -422,6 +408,7 @@ if __name__ == "__main__":
     mode = args["mode"]
     infile = args["in_file"]
     outfile = args["out_file"]
+    t = args["t"]
 
     serializer: Serializer = Serializer()
 
@@ -433,11 +420,11 @@ if __name__ == "__main__":
         algo_type: str = args["method"]
 
         if algo_type == SVD_ALGO_NUMPY:
-            svder = StandardSVD()
+            svder = StandardSVD(t)
         elif algo_type == SVD_ALGO_DUMMY:
-            svder = PowerMethodSVD()
+            svder = PowerMethodSVD(t)
         elif algo_type == SVD_ALGO_ADVANCED:
-            svder = PowerAdvancedMethodSVD()
+            svder = PowerAdvancedMethodSVD(t)
         else:
             print(
                 f"SVD-algorithm not supported (choose from: {SVD_ALGO_NUMPY} or {SVD_ALGO_DUMMY} or {SVD_ALGO_ADVANCED})")
