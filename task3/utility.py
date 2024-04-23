@@ -271,11 +271,11 @@ class BMP24Compressor:
 
 
 class Serializer:
-    MAGIC: str = "CP"
-    M_size: int = 4  # bytes
-    N_size: int = 4  # bytes
-    K_size: int = 4  # bytes
-    ORDER: str = "RGB"
+    MAGIC: str = "CP"  # 2 bytes
+    M_size: int = 4  # 4 bytes
+    N_size: int = 4  # 4 bytes
+    K_size: int = 4  # 4 bytes
+    ORDER: str = "RGB"  # 3 bytes
     NAME: str = ".BMP.cp"
 
     @staticmethod
@@ -434,13 +434,13 @@ if __name__ == "__main__":
         compressed_img: SVDPixels = compressor.compress_bmp(img, args["N"])
         serializer.serialize(compressed_img, Path(outfile + Serializer.NAME))
 
-        print(f"[COMPRESS] {infile} to {outfile}")
+        print(f"[COMPRESS] {infile} to {outfile + Serializer.NAME}")
 
     elif mode == MODE_DECOMPRESS:
         img: PIL.Image.Image = BMP24Compressor.decompress_bmp(serializer.deserialize(Path(infile)))
         img.save(outfile, "BMP")
 
-        print(f"[DECOMPRESS] {infile} to {outfile}")
+        print(f"[DECOMPRESS] {infile} to {outfile + ".BMP"}")
 
     else:
         print(f"MODE={mode} is not supported")
