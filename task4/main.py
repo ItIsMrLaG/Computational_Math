@@ -129,7 +129,8 @@ def get_right_side_coefs(p: Problem, j: int) -> float:
 
 
 def function(p: Problem, x: float) -> float:
-    l_idx, r_idx = 0, p.N - 1
+    # l_idx, r_idx = 0, p.N - 1
+    l_idx, r_idx = 0, p.N
 
     # get l_idx := i and r_idx := i+1 (when x in [x_i ; x_{i+1}])
     while r_idx - l_idx > 1:
@@ -179,11 +180,11 @@ def solve_y(p: Problem):
 
 
 def solve_problem(l: float, lambd: float, n: int) -> Problem:
-    x: np.ndarray = np.linspace(0.0, l, n + 1)
+    x: np.ndarray = np.linspace(0.0, l, n)
     p = Problem(
-        h=float(x[0]) - float(x[1]),
+        h=float(x[1]) - float(x[0]),
         x_knots=x,
-        N=n,
+        N=n-1,
         y_coef=np.zeros(1),
         lambd=lambd
     )
@@ -218,7 +219,7 @@ if __name__ == '__main__':
     results: list[TestCase] = []
 
     for lambd, N in test_set:
-        l: float = 4 * np.pi / sqrt(lambd)
+        l: float = 16*np.pi / sqrt(lambd)
         p: Problem = solve_problem(l, lambd, N)
 
         h, err = eval_error(p, l)
