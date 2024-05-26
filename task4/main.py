@@ -35,7 +35,7 @@ def thomas_algorithm(mt: TridiagMatrix, d: np.ndarray) -> np.ndarray:
     n: int = d.size
     c1: np.ndarray = np.zeros(n, dtype='float64')
     d1: np.ndarray = np.zeros(n, dtype='float64')
-    x: np.ndarray = np.zeros(n+1, dtype='float64')
+    x: np.ndarray = np.zeros(n + 1, dtype='float64')
 
     helper = lambda i: mt.b[i] - mt.a[i] * c1[i - 1]
     c_new = lambda i: (mt.c[i] / mt.b[i]) if i == 0 else (mt.c[i] / helper(i))
@@ -184,7 +184,7 @@ def solve_problem(l: float, lambd: float, n: int) -> Problem:
     p = Problem(
         h=float(x[1]) - float(x[0]),
         x_knots=x,
-        N=n-1,
+        N=n - 1,
         y_coef=np.zeros(1),
         lambd=lambd
     )
@@ -219,7 +219,7 @@ if __name__ == '__main__':
     results: list[TestCase] = []
 
     for lambd, N in test_set:
-        l: float = 16*np.pi / sqrt(lambd)
+        l: float = 16 * np.pi / sqrt(lambd)
         p: Problem = solve_problem(l, lambd, N)
 
         h, err = eval_error(p, l)
