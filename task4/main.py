@@ -193,17 +193,42 @@ def solve_problem(l: float, lambd: float, n: int) -> Problem:
 
 
 def eval_error(p: Problem, l: float) -> tuple[float, float]:
+    f = lambda x: 2 * p.lambd * np.sin(np.sqrt(p.lambd) * x)
+
     test_n: int = p.N * 10
-    test_h: float = l / test_n
-    err: float = 0.0
+    test_x: np.ndarray = np.linspace(0.0, l, test_n)
 
-    for i in range(test_n):
-        x: float = i * test_h
-        approx_val: float = function(p, x)
-        real_val: float = sin(sqrt(p.lambd) * x)
-        err = max(abs(approx_val - real_val), err)
+    test_h2: float = (float(test_x[1]) - float(test_x[0])) ** 2
 
-    return (test_h, err)
+    # ||f||_{L_2(0;l)}
+    norm_f = np.sqrt(quad(lambda x: f(x) ** 2, float(test_x[0]), float(test_x[-1]))[0])
+
+    approx_val: np.ndarray = np.array([function(p, xk) for xk in test_x])
+    real_val: np.ndarray = np.array([sin(sqrt(p.lambd) * xk) for xk in test_x])
+
+    # || y - y_k ||_{L_2(0;l)}
+    err = np.sqrt(np.sum((real_val - approx_val) ** 2))
+
+    """
+        c := 1/c_1 * ((Q*l/2 + P_1) * l/(2*c_1) + 1)
+        
+        P_1 := max|p'(x)| ; x in [0, l]
+        Q := max(q(x)) ; x in [0, l]
+        c_1 := const > 0 
+    """
+    c = (p.lambd * (l ** 2) / 4) + 1
+
+    """
+        c' := J_M * np.sqrt(P + Q * l ** 2 / 4)
+        
+        P := max(p(x)) ; x in [0, l]
+        Q := max(q(x)) ; x in [0, l]
+        J_M := const > 0 
+    """
+    J_M = 0.1
+    c_ = J_M * np.sqrt(1 + p.lambd * l ** 2 / 4)
+
+    return err, (c * c_) ** 2 * p.h ** 2 * norm_f
 
 
 @dataclass
@@ -215,20 +240,28 @@ class TestCase:
 
 
 if __name__ == '__main__':
-    test_set = list(product([1, 10, 100, 1000], [10, 100, 1000, 10000]))
+    test_set = list(product([1, 10, 100, 1000], [10, 20, 1000, 10000]))
     results: list[TestCase] = []
 
     for lambd, N in test_set:
         l: float = 16 * np.pi / sqrt(lambd)
         p: Problem = solve_problem(l, lambd, N)
 
-        h, err = eval_error(p, l)
+        err, h = eval_error(p, l)
 
         results.append(TestCase(
-            h_2=p.h ** 2,
+            h_2=h,
             err=err,
             N=N,
             lambd=lambd
         ))
+    t = 0
+    f = 0
     for el in results:
-        print(f"{round(el.err, 6)}, {round(el.h_2, 6)}, {el.N}, {el.lambd}")
+        # print(f"{el.err}, {el.h_2}, {el.N}, {el.lambd}")
+        if el.err < el.h_2:
+            t += 1
+        else:
+            f += 1
+            print(f"{el.N}, {el.lambd}")
+    print(f"true = {t}, false = {f}")
