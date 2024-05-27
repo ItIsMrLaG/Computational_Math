@@ -3,6 +3,8 @@ from itertools import product
 from math import sqrt, sin, cos
 
 import numpy as np
+import pylab as pl
+from matplotlib import pyplot as plt
 from scipy.integrate import quad
 
 """
@@ -206,6 +208,9 @@ def eval_error(p: Problem, l: float) -> tuple[float, float]:
     approx_val: np.ndarray = np.array([function(p, xk) for xk in test_x])
     real_val: np.ndarray = np.array([sin(sqrt(p.lambd) * xk) for xk in test_x])
 
+    # plt.plot(test_x, approx_val)
+    # plt.show()
+
     # || y - y_k ||_{L_2(0;l)}
     err = np.sqrt(np.sum((real_val - approx_val) ** 2))
 
@@ -228,7 +233,7 @@ def eval_error(p: Problem, l: float) -> tuple[float, float]:
     J_M = 0.1
     c_ = J_M * np.sqrt(1 + p.lambd * l ** 2 / 4)
 
-    return err, (c * c_) ** 2 * p.h ** 2 * norm_f
+    return err, ((c * c_) ** 2) * (p.h**2) * norm_f
 
 
 @dataclass
@@ -240,11 +245,11 @@ class TestCase:
 
 
 if __name__ == '__main__':
-    test_set = list(product([1, 10, 100, 1000], [10, 20, 1000, 10000]))
+    test_set = list(product([1, 10, 100], [10, 100, 1000]))
     results: list[TestCase] = []
 
     for lambd, N in test_set:
-        l: float = 16 * np.pi / sqrt(lambd)
+        l: float = 3 * np.pi / sqrt(lambd)
         p: Problem = solve_problem(l, lambd, N)
 
         err, h = eval_error(p, l)
@@ -258,7 +263,7 @@ if __name__ == '__main__':
     t = 0
     f = 0
     for el in results:
-        # print(f"{el.err}, {el.h_2}, {el.N}, {el.lambd}")
+        print(f"{el.err}, {el.h_2}, {el.N}, {el.lambd}")
         if el.err < el.h_2:
             t += 1
         else:
